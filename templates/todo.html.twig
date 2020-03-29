@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <!-- This file has been downloaded from Bootsnipp.com. Enjoy! -->
+    <title>Todo Example</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{{ asset('public/css/bootstrap.min.css') }}" rel="stylesheet">
+    <style type="text/css">
+        body{
+            background-color:#EEEEEE;
+        }
+        .todolist{
+            background-color:#FFF;
+            padding:20px 20px 10px 20px;
+            margin-top:30px;
+        }
+        .todolist h1{
+            margin:0;
+            padding-bottom:20px;
+            text-align:center;
+        }
+        .form-control{
+            border-radius:0;
+        }
+        li.ui-state-default{
+            background:#fff;
+            border:none;
+            border-bottom:1px solid #ddd;
+        }
+
+        li.ui-state-default:last-child{
+            border-bottom:none;
+        }
+
+        .todo-footer{
+            background-color:#F4FCE8;
+            margin:0 -20px -10px -20px;
+            padding: 10px 20px;
+        }
+        #done-items li{
+            padding:10px 0;
+            border-bottom:1px solid #ddd;
+            /*text-decoration:line-through;*/
+        }
+        #done-items li:last-child{
+            border-bottom:none;
+        }
+        #checkAll{
+            margin-top:10px;
+        }
+    </style>
+    <script src="{{ asset('public/js/jquery-1.11.1.min.js') }}"></script>
+    <script src="{{ asset('public/js/bootstrap.min.js') }}"></script>
+    <script src="{{ asset('public/js/loadingoverlay.min.js') }}"></script>
+    <script type="text/javascript" src="{{ asset('public/js/jquery-ui.min.js') }}"></script>
+    <script>
+        var _url="{{app.request.getSchemeAndHttpHost()}}/todo";
+    </script>
+</head>
+<body>
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="todolist not-done">
+                <h1>Todos</h1>
+                <input type="text" class="form-control add-todo" id="txtTitle" placeholder="Add todo">
+                <button id="btnAdd" class="btn btn-danger" style="margin-top:10px">Add</button>
+                <button id="checkAll" class="btn btn-success">Mark all as done</button>
+
+                <hr>
+                <ul id="sortable" class="list-unstyled">
+                    {% for task in tasks %}
+                    <li class="ui-state-default">
+                        <div class="checkbox">
+                            <label>
+                                <input type="checkbox" value="" data-id="{{ task.id }}" data-updatestatus="{{ path('switch_status',{'id':task.id}) }}" />{{ task.title }}</label>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="todo-footer">
+                    <strong><span class="count-todos"></span></strong> Items Left
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="todolist">
+                <h1>Already Done</h1>
+                <ul id="done-items" class="list-unstyled">
+                    {% for taskDone in tasksDone %}
+                        <li>{{ taskDone.title }}
+                            <button title="Delete" data-id="{{ taskDone.id }}" class="remove-item btn btn-default btn-xs pull-right"><span class="glyphicon glyphicon-remove" ></span></button>
+                            <button title="Restore" data-title="{{ taskDone.title }}" data-id="{{ taskDone.id }}" style="margin-right: 5px" class="restore-item btn btn-default btn-xs pull-right"><span class="glyphicon glyphicon-backward" ></span></button></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+
+    $('#btnAdd').click(function(e){
+        e.preventDefault();
+        $("#sortable").LoadingOverlay("show");
+        var title = $.trim($('#txtTitle').val());
+        if(title.length==0){
+            alert('Please input name');
+            return;
+        }
+
+        $.ajax({
+            url:"{{ path('create_task') }}",
+            loadingClass: "loading-circle",
+            data: {
+                title:title
+            },
+            dataType: 'json',
+            method: 'post',
+            success: function(result) {
+                var path=_url+'/switch-status/'+result.id;
+                createTodo(title,result.id,path);
+                countTodos();
+                $("#sortable").LoadingOverlay("hide");
+            }
+        });
+    });
+</script>
+<script type="text/javascript">
+    $("#sortable").sortable();
+    $("#sortable").disableSelection();
+
+    countTodos();
+
+    // all done btn
+    $("#checkAll").click(function(e){
+        e.preventDefault();
+        var r = confirm("Are you sure ?");
+        let that=this;
+        if (r == true) {
+            AllDone();
+        }
+        return false;
+    });
+
+    // mark task as done
+    $('.todolist').on('change','#sortable li input[type="checkbox"]',function(){
+        if($(this).prop('checked')){
+            $("#sortable").LoadingOverlay("show");
+            var id = $(this).data('id');
+            var urlStatus=$(this).data('updatestatus');
+            var doneItem = $(this).parent().parent().find('label').text();
+            $(this).parent().parent().parent().addClass('remove');
+            $.ajax({
+                url:urlStatus,
+                loadingClass: "loading-circle",
+                dataType: 'json',
+                method: 'get',
+                success: function(result) {
+                    $("#sortable").LoadingOverlay("hide");
+                    done(doneItem,id);
+                    countTodos();
+                }
+            });
+        }
+    });
+
+    //delete done task from "already done"
+    $('.todolist').on('click','.remove-item',function(){
+        //removeItem(this);
+        let id=$(this).data('id');
+        var r = confirm("Are you sure ?");
+        let that=this;
+        if (r == true) {
+            $.ajax({
+                url:_url+'/delete/'+id,
+                loadingClass: "loading-circle",
+                dataType: 'json',
+                method: 'get',
+                success: function(result) {
+                    removeItem(that);
+                }
+            });
+        }
+    });
+
+    $('.todolist').on('click','.restore-item',function(){
+        let id=$(this).data('id');
+        let title=$(this).data('title');
+        var r = confirm("Do you want to restore ?");
+        let that=this;
+        if (r == true) {
+            var path=_url+'/switch-status/'+id;
+            $.ajax({
+                url:path,
+                loadingClass: "loading-circle",
+                dataType: 'json',
+                method: 'get',
+                success: function(result) {
+                    removeItem(that);
+                    createTodo(title,id,path);
+                    countTodos();
+                }
+            });
+        }
+    });
+
+    // count tasks
+    function countTodos(){
+        var count = $("#sortable li").length;
+        $('.count-todos').html(count);
+    }
+
+    //create task
+    function createTodo(text,id,path){
+        var markup = `
+        <li class="ui-state-default"><div class="checkbox"><label><input type="checkbox" value=""  data-id="${id}" data-updatestatus="${path}"/>${text}</label></div></li>`;
+        $('#sortable').prepend(markup);
+        $('#txtTitle').val('');
+    }
+
+    //mark task as done
+    function done(doneItem,id){
+        var done = doneItem;
+        var markup =`<li>${done}
+            <button title="Delete" data-id="${id}" class="remove-item btn btn-default btn-xs pull-right"><span class="glyphicon glyphicon-remove" ></span></button>
+            <button title="Restore" data-title="${done}" data-id="${id}" style="margin-right: 5px" class="restore-item btn btn-default btn-xs pull-right"><span class="glyphicon glyphicon-backward"></span></button>
+        </li>`;
+        $('#done-items').append(markup);
+        $('.remove').remove();
+    }
+
+    //mark all tasks as done
+    function AllDone(){
+        var myArray = [];
+        var myArrayId=[];
+        var myUrlStatus=[];
+
+        $('#sortable li').each( function() {
+            myArray.push($.trim($(this).text()));
+        });
+
+        $('#sortable li input').each( function() {
+            myArrayId.push($(this).data('id'));
+            myUrlStatus.push($(this).data('updatestatus'));
+        });
+        // add to done
+        for (i = 0; i < myArray.length; i++) {
+            var id = myArrayId[i];
+            var urlStatus=myUrlStatus[i];
+            var title=myArray[i];
+            $.ajax({
+                url:urlStatus,
+                loadingClass: "loading-circle",
+                dataType: 'json',
+                method: 'get',
+                async: false,
+                success: function(result) {
+                    let html=`<li>${title}
+                            <button title="Delete" data-id="${id}" class="remove-item btn btn-default btn-xs pull-right"><span class="glyphicon glyphicon-remove" ></span></button>
+                            <button title="Restore" data-title="${title}" data-id="${id}" style="margin-right: 5px" class="restore-item btn btn-default btn-xs pull-right"><span class="glyphicon glyphicon-backward" ></span></button>
+                            </li>`;
+                    $('#done-items').append(html);
+                }
+            });
+        }
+        // myArray
+        $('#sortable li').remove();
+        countTodos();
+    }
+
+    //remove done task from list
+    function removeItem(element){
+        $(element).parent().remove();
+    }
+</script>
+</body>
+</html>
